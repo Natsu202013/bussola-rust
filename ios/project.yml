@@ -1,0 +1,57 @@
+name: Bussola
+options:
+  bundleIdPrefix: com.bussola
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "15.0"
+  developmentLanguage: en
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    # Keep the Swift module small and fast to build.
+    SWIFT_COMPILATION_MODE: wholemodule
+    SWIFT_OPTIMIZATION_LEVEL: "-O"
+    ONLY_ACTIVE_ARCH: NO
+
+targets:
+  Bussola:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: Bussola
+    settings:
+      base:
+        PRODUCT_NAME: Bussola
+        PRODUCT_BUNDLE_IDENTIFIER: com.bussola.app
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: Bussola/Info.plist
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_OBJC_BRIDGING_HEADER: Bussola/Bussola-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/Bussola/include"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/../rust/target/aarch64-apple-ios/release"
+        OTHER_LDFLAGS:
+          - "-lbussola"
+        ENABLE_BITCODE: NO
+        # The IPA produced by CI is unsigned: signing is disabled there.
+        CODE_SIGN_STYLE: Automatic
+        # Dead-strip the Rust symbols that are never referenced from Swift.
+        DEAD_CODE_STRIPPING: YES
+
+schemes:
+  Bussola:
+    build:
+      targets:
+        Bussola: all
+    run:
+      config: Release
+    archive:
+      config: Release

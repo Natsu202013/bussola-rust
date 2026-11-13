@@ -1,0 +1,148 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "LICENSE"]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Allega l'APK alla release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Compila APK (Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 1. Checkout
+        uses: actions/checkout@v4
+
+      - name: 2. Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 3. Install Rust + Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: 4. Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: 5. Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-35 build-tools;35.0.0 ndk;27.0.12077973'
+
+      - name: 6. Unit tests del core Rust
+        run: cargo test --manifest-path rust/Cargo.toml
+
+      - name: 7. Compila le librerie native (.so)
+        run: |
+          set -euo pipefail
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
+          ./scripts/build-android-rust.sh
+          ls -l android/app/src/main/jniLibs/*/libbussola.so
+
+      - name: 8. Prepara la firma
+        env:
+          KEYSTORE_BASE64: ${{ secrets.BUSSOLA_KEYSTORE_BASE64 }}
+          SECRET_STORE_PASSWORD: ${{ secrets.BUSSOLA_STORE_PASSWORD }}
+          SECRET_KEY_ALIAS: ${{ secrets.BUSSOLA_KEY_ALIAS }}
+          SECRET_KEY_PASSWORD: ${{ secrets.BUSSOLA_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/bussola.jks"
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            echo "Firma: keystore dai repository secrets."
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE"
+            STORE_PASS="$SECRET_STORE_PASSWORD"
+            ALIAS="${SECRET_KEY_ALIAS:-bussola}"
+            KEY_PASS="${SECRET_KEY_PASSWORD:-$SECRET_STORE_PASSWORD}"
+            echo "SIGNING=secrets" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Secret BUSSOLA_KEYSTORE_BASE64 assente: genero un keystore effimero. L'APK sara' firmato ma non aggiornabile con build future."
+            STORE_PASS=$(openssl rand -hex 16)
+            ALIAS=bussola
+            KEY_PASS="$STORE_PASS"
+            keytool -genkeypair -keystore "$KEYSTORE" -storetype PKCS12 \
+              -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
+              -dname "CN=Bussola CI, OU=Mobile, O=Bussola, C=IT"
+            echo "SIGNING=ephemeral" >> "$GITHUB_ENV"
+          fi
+          [ -s "$KEYSTORE" ] || { echo "::error::keystore non creato"; exit 1; }
+          {
+            echo "BUSSOLA_KEYSTORE=$KEYSTORE"
+            echo "BUSSOLA_STORE_PASSWORD=$STORE_PASS"
+            echo "BUSSOLA_KEY_ALIAS=$ALIAS"
+            echo "BUSSOLA_KEY_PASSWORD=$KEY_PASS"
+          } >> "$GITHUB_ENV"
+
+      - name: 9. Compila l'APK release
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: 10. Verifica e rinomina
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          [ -f "$APK" ] || { ls -R android/app/build/outputs; exit 1; }
+          mkdir -p dist
+          cp "$APK" dist/Bussola.apk
+          BT=$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)
+          "$ANDROID_SDK_ROOT/build-tools/$BT/apksigner" verify --print-certs dist/Bussola.apk
+          sha256sum dist/Bussola.apk | awk '{print $1"  Bussola.apk"}' > dist/Bussola.apk.sha256
+          SIZE=$(du -h dist/Bussola.apk | cut -f1)
+          BYTES=$(stat -c%s dist/Bussola.apk)
+          echo "APK pronto: $SIZE ($BYTES byte)"
+          {
+            echo "### APK Android"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| File | \`Bussola.apk\` |"
+            echo "| Peso | **$SIZE** |"
+            echo "| ABI | arm64-v8a, armeabi-v7a |"
+            echo "| Firma | ${SIGNING} |"
+            echo ""
+            echo "Checksum: \`$(cut -d' ' -f1 dist/Bussola.apk.sha256)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 11. Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bussola-apk
+          path: |
+            dist/Bussola.apk
+            dist/Bussola.apk.sha256
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: 12. Allega alla release
+        if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v1.0.0"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "Bussola v1.0.0" \
+              --notes "Bussola — bussola iOS/Android con core Rust. Il primo job che arriva crea la release, gli altri allegano i propri file."
+          fi
+          gh release upload "$TAG" dist/Bussola.apk dist/Bussola.apk.sha256 --clobber

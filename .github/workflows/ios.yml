@@ -1,0 +1,134 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "LICENSE"]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Allega l'IPA alla release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    name: Compila IPA (macOS)
+    # macos-15 ships Xcode 16, whose SDK matches the Rust target we build.
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: 1. Checkout
+        uses: actions/checkout@v4
+
+      - name: 2. Install Rust + iOS target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: 3. Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: 4. Toolchain versions
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          rustc --version
+
+      - name: 5. Compila la static lib Rust
+        run: ./scripts/build-ios-rust.sh
+
+      - name: 6. Genera il progetto Xcode (XcodeGen)
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          cd ios
+          xcodegen generate --spec project.yml
+          ls -la
+
+      - name: 7. Compila .app senza firma
+        run: |
+          set -euo pipefail
+          cd ios
+          xcodebuild \
+            -project Bussola.xcodeproj \
+            -scheme Bussola \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            build
+
+      - name: 8. Impacchetta IPA + bundle e verifica il link a Rust
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/dd/Build/Products/Release-iphoneos/Bussola.app"
+          [ -d "$APP" ] || { echo "::error::Bussola.app non trovato"; find "$RUNNER_TEMP/dd" -name '*.app' -maxdepth 6; exit 1; }
+
+          # La libreria Rust deve essere davvero linkata nell'eseguibile.
+          if ! nm -a "$APP/Bussola" 2>/dev/null | grep -q "bussola_update"; then
+            echo "::error::bussola_update non presente: il core Rust non e' stato linkato"
+            nm -a "$APP/Bussola" | head -20
+            exit 1
+          fi
+          echo "Simboli Rust trovati nell'eseguibile."
+
+          mkdir -p dist/ipa/Payload
+          cp -R "$APP" dist/ipa/Payload/
+          ( cd dist/ipa && zip -qry ../Bussola.ipa Payload )
+          ditto -c -k --sequesterRsrc --keepParent "$APP" dist/Bussola.app.zip
+          cd dist
+          shasum -a 256 Bussola.ipa | awk '{print $1"  Bussola.ipa"}' > Bussola.ipa.sha256
+          rm -rf ipa
+          ls -lh Bussola.ipa Bussola.app.zip
+          SIZE=$(du -h Bussola.ipa | cut -f1)
+          {
+            echo "### IPA iOS"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| File | \`Bussola.ipa\` (non firmato) |"
+            echo "| Bundle | \`Bussola.app.zip\` |"
+            echo "| Peso | **$SIZE** |"
+            echo "| Bundle ID | \`com.bussola.app\` |"
+            echo ""
+            echo "L'IPA non e' firmato: installalo con Sideloadly/AltStore usando il tuo Apple ID."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 9. Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bussola-ipa
+          path: |
+            dist/Bussola.ipa
+            dist/Bussola.app.zip
+            dist/Bussola.ipa.sha256
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: 10. Allega alla release
+        if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v1.0.0"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "Bussola v1.0.0" \
+              --notes "Bussola — bussola iOS/Android con core Rust. Il primo job che arriva crea la release, gli altri allegano i propri file."
+          fi
+          gh release upload "$TAG" dist/Bussola.ipa dist/Bussola.app.zip dist/Bussola.ipa.sha256 --clobber

@@ -1,0 +1,31 @@
+[package]
+name = "bussola-core"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Compass heading engine (low-pass circular filter) exposed as a C ABI"
+license = "MIT"
+publish = false
+
+[lib]
+name = "bussola"
+crate-type = ["staticlib", "cdylib", "rlib"]
+# The crate is no_std outside tests; doctests would need std.
+doctest = false
+
+[dependencies]
+libm = { version = "0.2", default-features = false }
+
+# `no_std` requires abort-on-panic. The test harness forces unwinding by
+# itself, so no `[profile.test]` override is needed.
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+# "debuginfo" keeps the C-ABI symbols a staticlib must expose to the linker,
+# while dropping the debug sections. The Android script strips them further.
+strip = "debuginfo"

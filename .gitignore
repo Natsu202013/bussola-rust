@@ -1,0 +1,30 @@
+# --- Rust ---
+/rust/target/
+**/*.rs.bk
+
+# --- Android ---
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/app/src/main/jniLibs/
+/android/app/release/
+/android/.cxx/
+*.iml
+.idea/
+.DS_Store
+
+# --- iOS ---
+/ios/*.xcodeproj/
+/ios/*.xcworkspace/
+/ios/build/
+/ios/DerivedData/
+/ios/Bussola/Info.plist
+xcuserdata/
+*.xcuserstate
+
+# --- Artifacts ---
+/dist/
+*.ipa
+*.apk
+*.aab

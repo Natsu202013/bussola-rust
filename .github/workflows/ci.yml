@@ -1,0 +1,65 @@
+name: CI
+
+# Unit tests + native library size budget. Linux only: fast and free.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "LICENSE"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust core (tests + size budget)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Unit tests
+        run: cargo test --manifest-path rust/Cargo.toml
+
+      - name: Release build and size budget
+        run: |
+          set -euo pipefail
+          RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384" \
+            cargo build --release --target aarch64-linux-android \
+            --manifest-path rust/Cargo.toml \
+            --config 'profile.release.strip="symbols"'
+          SO=$(find rust/target/aarch64-linux-android/release -name 'libbussola.so' | head -1)
+          SIZE=$(stat -c%s "$SO")
+          echo "libbussola.so (arm64-v8a): $SIZE byte"
+          echo "### Native core: $SIZE byte ($((SIZE / 1024)) KB)" >> "$GITHUB_STEP_SUMMARY"
+          # Budget: the whole point of the no_std rewrite is staying tiny.
+          if [ "$SIZE" -gt 65536 ]; then
+            echo "::error::libbussola.so is $SIZE bytes, over the 64 KB budget"
+            exit 1
+          fi
+
+      - name: 16 KB page size check (Android 15 requirement)
+        run: |
+          set -euo pipefail
+          SO=$(find rust/target/aarch64-linux-android/release -name 'libbussola.so' | head -1)
+          readelf -lW "$SO" | awk '/LOAD/ {print $NF}' | sort -u
+          if ! readelf -lW "$SO" | awk '/LOAD/ {print $NF}' | grep -qx '0x4000'; then
+            echo "::error::LOAD segments are not 16 KB aligned"
+            exit 1
+          fi
+          echo "16 KB alignment OK"
