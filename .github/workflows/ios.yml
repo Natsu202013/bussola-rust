@@ -151,9 +151,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="v1.0.0"
+          VERSION=$(sed -n 's/.*versionName *= *"\([^"]*\)".*/\1/p' android/app/build.gradle.kts | head -1)
+          [ -n "$VERSION" ] || { echo "::error::versionName non trovato"; exit 1; }
+          TAG="v$VERSION"
+          echo "Release tag: $TAG"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "Bussola v1.0.0" \
-              --notes "Bussola — bussola iOS/Android con core Rust. Il primo job che arriva crea la release, gli altri allegano i propri file."
+            gh release create "$TAG" --title "Bussola $TAG" \
+              --notes "Bussola $TAG: bussola Android/iOS con core Rust (no_std)." \
+              || sleep 5
           fi
           gh release upload "$TAG" dist/Bussola.ipa dist/Bussola.app.zip dist/Bussola.ipa.sha256 --clobber

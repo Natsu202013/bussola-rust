@@ -3,18 +3,24 @@
 Bussola per **Android e iOS** con il motore di calcolo scritto in **Rust**, UI nativa
 per piattaforma. Priorità: **peso minimo**.
 
+Misure reali prese dagli artefatti della release `v1.0.0`:
+
 | | |
 |---|---|
-| **APK Android** | ~**83 KB** (era 588 KB prima dell'ottimizzazione del core) |
-| **Core Rust** | ~**15 KB** per ABI (arm64-v8a), contro 311 KB con `std` |
+| **APK Android** | **83.292 byte** (~81 KB) — era 588 KB prima dell'ottimizzazione del core |
+| **Core Rust** | **14.712 byte** (arm64-v8a), **10.508** (armeabi-v7a) — contro 311.312 con `std` |
+| **IPA iOS** | **131.338 byte** (~128 KB), eseguibile arm64 Mach-O da **214.344 byte** |
 | **Dipendenze** | Rust: solo `libm`. Android: nessuna (nemmeno AndroidX). iOS: SwiftUI + CoreLocation |
 | **Permessi Android** | nessuno (il sensore di rotazione non ne richiede) |
+| **Target** | Android 7+ (API 24, target 35) · iOS 15+ |
 
 ## Perché pesa così poco
 
-1. **`no_std` nel core Rust.** Il 90% dei 311 KB iniziali non era codice: era il
+1. **`no_std` nel core Rust.** Il 95% dei 311 KB iniziali non era codice: era il
    macchinario dei panic di `std` (`backtrace`, `addr2line`, `gimli`,
-   `rustc_demangle`). Togliendo `std` la `.so` scende a ~15 KB.
+   `rustc_demangle`). Togliendo `std` la `.so` scende a 14 KB, cioè ~21x in meno.
+   Su Apple serve `-lSystem` esplicito, perché un `cdylib` viene linkato con
+   `-nodefaultlibs` e `abort`/`dyld_stub_binder` resterebbero irrisolti.
 2. **Niente heap.** Le istanze vivono in un pool statico di 16 slot; handle
    validati su ogni chiamata (NULL, stale, disallineati vengono rifiutati, mai
    dereferenziati).
@@ -95,7 +101,7 @@ universale per il simulatore.
 
 | Workflow | Runner | Cosa fa |
 |---|---|---|
-| `ci.yml` | `ubuntu-latest` | test Rust, build, **budget di peso** (64 KB) e verifica allineamento a 16 KB |
+| `ci.yml` | `ubuntu-latest` | 17 test Rust, build, **budget di peso** (64 KB) e verifica allineamento a 16 KB |
 | `android.yml` | `ubuntu-latest` | APK firmato + release |
 | `ios.yml` | `macos-15` | static lib Rust, XcodeGen, `.app`, IPA non firmato + release |
 
