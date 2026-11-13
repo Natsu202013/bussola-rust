@@ -97,9 +97,11 @@ jobs:
             [ -f "$DWARF" ] && nm -a "$DWARF" | grep -c . || true
             exit 1
           fi
-          # Prova ulteriore: le etichette della rosa dei venti stanno in .rodata.
-          if ! strings -a "$APP/Bussola" | grep -q "NNW"; then
-            echo "::error::etichette della rosa non presenti nel binario"
+          # Prova che il codice Rust sia finito anche in .rodata: i letterali
+          # della rosa (non `bussola_*`, quelli stanno nel core condiviso) e la
+          # versione del core sono stringhe C statiche della crate Rust.
+          if ! strings -a "$APP/Bussola" | grep -qx "1\.0\.0"; then
+            echo "::error::stringa di versione del core Rust non trovata nel binario"
             exit 1
           fi
 
