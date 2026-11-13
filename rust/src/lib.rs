@@ -471,6 +471,18 @@ mod jni {
 mod tests {
     use super::*;
     use core::ops::{Deref, DerefMut};
+    use std::sync::{Mutex, MutexGuard};
+
+    /// The pool is a small process-wide static, so tests that allocate from it
+    /// must not step on each other. `pool_exhaustion_and_reuse` deliberately
+    /// drains it, which would starve every other test running in parallel.
+    static POOL_LOCK: Mutex<()> = Mutex::new(());
+
+    fn pool_lock() -> MutexGuard<'static, ()> {
+        // A panicking test would poison the mutex; the data (the pool) is still
+        // consistent because each Guard frees its slot on unwind.
+        POOL_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     /// Owns one pool slot and releases it on drop, so the tests can run in
     /// parallel without exhausting the (deliberately small) static pool.
@@ -560,6 +572,7 @@ mod tests {
 
     #[test]
     fn first_sample_is_used_directly() {
+        let _pool = pool_lock();
         let mut c = compass(0.2);
         assert!((c.update(123.0) - 123.0).abs() < 1e-4);
         assert!((c.heading() - 123.0).abs() < 1e-4);
@@ -567,6 +580,7 @@ mod tests {
 
     #[test]
     fn smoothing_converges_without_overshoot() {
+        let _pool = pool_lock();
         let mut c = compass(0.2);
         c.update(0.0);
         let mut last = 0.0;
@@ -579,6 +593,7 @@ mod tests {
 
     #[test]
     fn smoothing_takes_short_path_across_north() {
+        let _pool = pool_lock();
         let mut c = compass(0.5);
         c.update(350.0);
         let after = c.update(10.0);
@@ -590,6 +605,7 @@ mod tests {
 
     #[test]
     fn noise_is_attenuated() {
+        let _pool = pool_lock();
         let mut c = compass(0.1);
         c.update(100.0);
         for _ in 0..10 {
@@ -602,6 +618,7 @@ mod tests {
 
     #[test]
     fn offset_shifts_heading() {
+        let _pool = pool_lock();
         let mut c = compass(1.0);
         c.set_offset(10.0);
         assert!((c.update(0.0) - 10.0).abs() < 1e-4);
@@ -611,6 +628,7 @@ mod tests {
 
     #[test]
     fn reset_keeps_configuration() {
+        let _pool = pool_lock();
         let mut c = compass(1.0);
         c.set_offset(5.0);
         c.update(100.0);
@@ -621,6 +639,7 @@ mod tests {
 
     #[test]
     fn alpha_is_clamped() {
+        let _pool = pool_lock();
         assert!(compass(0.0).alpha() >= 0.02);
         assert_eq!(compass(50.0).alpha(), 1.0);
         assert!((compass(f32::NAN).alpha() - 0.18).abs() < 1e-6);
@@ -636,6 +655,7 @@ mod tests {
 
     #[test]
     fn non_finite_samples_are_ignored() {
+        let _pool = pool_lock();
         let mut c = compass(1.0);
         c.update(30.0);
         assert!((c.update(f32::NAN) - 30.0).abs() < 1e-4);
@@ -644,6 +664,7 @@ mod tests {
 
     #[test]
     fn pool_handles_are_validated() {
+        let _pool = pool_lock();
         unsafe {
             let p = bussola_new(0.5);
             assert!(!p.is_null());
@@ -679,6 +700,7 @@ mod tests {
 
     #[test]
     fn pool_exhaustion_and_reuse() {
+        let _pool = pool_lock();
         // Other tests may hold slots in parallel, so drain the pool instead of
         // assuming it starts empty: keep allocating until it refuses.
         let mut handles = Vec::new();
@@ -707,6 +729,7 @@ mod tests {
 
     #[test]
     fn ffi_strings_are_nul_terminated() {
+        let _pool = pool_lock();
         unsafe {
             let ptr = bussola_cardinal(90.0);
             let s = std::ffi::CStr::from_ptr(ptr as *const i8)
