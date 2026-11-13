@@ -3,13 +3,13 @@
 Bussola per **Android e iOS** con il motore di calcolo scritto in **Rust**, UI nativa
 per piattaforma. Priorità: **peso minimo**.
 
-Misure reali prese dagli artefatti della release `v1.0.0`:
+Misure reali prese dagli artefatti della release `v1.2.0`:
 
 | | |
 |---|---|
 | **APK Android** | **83.292 byte** (~81 KB) — era 588 KB prima dell'ottimizzazione del core |
 | **Core Rust** | **14.712 byte** (arm64-v8a), **10.508** (armeabi-v7a) — contro 311.312 con `std` |
-| **IPA iOS** | **131.338 byte** (~128 KB), eseguibile arm64 Mach-O da **214.344 byte** |
+| **IPA iOS** | **137.223 byte** (~134 KB), eseguibile arm64 Mach-O da **217.944 byte** |
 | **Dipendenze** | Rust: solo `libm`. Android: nessuna (nemmeno AndroidX). iOS: SwiftUI + CoreLocation |
 | **Permessi Android** | nessuno (il sensore di rotazione non ne richiede) |
 | **Target** | Android 7+ (API 24, target 35) · iOS 15+ |
@@ -50,14 +50,14 @@ radianti `atan2` (convenzione Android) e le 16 etichette della rosa dei venti.
 
 ## Download
 
-Dalla pagina **Releases** (tag `v1.1.0`). Ogni bump di `versionName` in
+Dalla pagina **Releases** (tag `v1.2.0`). Ogni bump di `versionName` in
 `android/app/build.gradle.kts` crea una release nuova al push successivo:
 
 | File | Piattaforma | Note |
 |---|---|---|
 | `Bussola.apk` | Android | 83 KB, firmato, Android 7+ (API 24), arm64-v8a + armeabi-v7a |
 | `Bussola.apk.sha256` | — | checksum |
-| `Bussola.ipa` | iOS | 131 KB, **non firmato**, va rifirmato con Sideloadly/AltStore |
+| `Bussola.ipa` | iOS | 134 KB, **non firmato**, va rifirmato con Sideloadly/AltStore |
 | `Bussola.app.zip` | iOS | bundle `.app` per rifirma manuale |
 | `Bussola.ipa.sha256` | — | checksum |
 
