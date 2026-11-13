@@ -33,12 +33,22 @@ jobs:
         with:
           workspaces: rust
 
+      - name: Setup Android NDK (linker for the cross build)
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;27.0.12077973'
+
       - name: Unit tests
         run: cargo test --manifest-path rust/Cargo.toml
 
       - name: Release build and size budget
         run: |
           set -euo pipefail
+          NDK="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          # Without an explicit linker cargo falls back to the host `cc`, which
+          # cannot emit aarch64-linux objects.
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TC/aarch64-linux-android24-clang"
           RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384" \
             cargo build --release --target aarch64-linux-android \
             --manifest-path rust/Cargo.toml \
