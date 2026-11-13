@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths-ignore: ["**.md", "LICENSE"]
+  pull_request:
+    paths-ignore: ["**.md", "LICENSE"]
   workflow_dispatch:
     inputs:
       release:
@@ -14,9 +16,11 @@ on:
 permissions:
   contents: write
 
+# Only pull requests cancel their previous run. A push to main must always
+# finish: it publishes the release assets.
 concurrency:
-  group: android-${{ github.ref }}
-  cancel-in-progress: true
+  group: android-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   apk:
@@ -111,6 +115,7 @@ jobs:
           SIZE=$(du -h dist/Bussola.apk | cut -f1)
           BYTES=$(stat -c%s dist/Bussola.apk)
           echo "APK pronto: $SIZE ($BYTES byte)"
+          echo "APK_BYTES=$BYTES" >> "$GITHUB_ENV"
           {
             echo "### APK Android"
             echo ""
@@ -135,14 +140,16 @@ jobs:
           if-no-files-found: error
 
       - name: 12. Allega alla release
-        if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.release)
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.release)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           TAG="v1.0.0"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
+            # Two workflows race to create the release: tolerate losing.
             gh release create "$TAG" --title "Bussola v1.0.0" \
-              --notes "Bussola — bussola iOS/Android con core Rust. Il primo job che arriva crea la release, gli altri allegano i propri file."
+              --notes "Bussola: bussola iOS/Android con core Rust. Il primo job che arriva crea la release, gli altri allegano i propri file." \
+              || sleep 5
           fi
           gh release upload "$TAG" dist/Bussola.apk dist/Bussola.apk.sha256 --clobber

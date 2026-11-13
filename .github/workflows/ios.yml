@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
     paths-ignore: ["**.md", "LICENSE"]
+  # PR validation, without the release upload.
+  pull_request:
+    paths-ignore: ["**.md", "LICENSE"]
   workflow_dispatch:
     inputs:
       release:
@@ -14,9 +17,10 @@ on:
 permissions:
   contents: write
 
+# Only pull requests cancel their previous run; main pushes must finish.
 concurrency:
-  group: ios-${{ github.ref }}
-  cancel-in-progress: true
+  group: ios-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   ipa:
