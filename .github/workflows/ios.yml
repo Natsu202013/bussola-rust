@@ -84,12 +84,24 @@ jobs:
           [ -d "$APP" ] || { echo "::error::Bussola.app non trovato"; find "$RUNNER_TEMP/dd" -name '*.app' -maxdepth 6; exit 1; }
 
           # La libreria Rust deve essere davvero linkata nell'eseguibile.
-          if ! nm -a "$APP/Bussola" 2>/dev/null | grep -q "bussola_update"; then
-            echo "::error::bussola_update non presente: il core Rust non e' stato linkato"
-            nm -a "$APP/Bussola" | head -20
+          # Il binario installato e' strippato, quindi i simboli si cercano nel
+          # dSYM generato da Xcode (stessa immagine, simboli conservati).
+          DWARF="$APP.dSYM/Contents/Resources/DWARF/Bussola"
+          if [ -f "$DWARF" ] && nm -a "$DWARF" 2>/dev/null | grep -q "bussola_update"; then
+            echo "Simboli Rust trovati nel dSYM: il core e' linkato."
+          elif nm -a "$APP/Bussola" 2>/dev/null | grep -q "bussola_update"; then
+            echo "Simboli Rust trovati nel binario."
+          else
+            echo "::error::bussola_update non presente: il core Rust non risulta linkato"
+            ls -la "$APP" || true
+            [ -f "$DWARF" ] && nm -a "$DWARF" | grep -c . || true
             exit 1
           fi
-          echo "Simboli Rust trovati nell'eseguibile."
+          # Prova ulteriore: le etichette della rosa dei venti stanno in .rodata.
+          if ! strings -a "$APP/Bussola" | grep -q "NNW"; then
+            echo "::error::etichette della rosa non presenti nel binario"
+            exit 1
+          fi
 
           mkdir -p dist/ipa/Payload
           cp -R "$APP" dist/ipa/Payload/
