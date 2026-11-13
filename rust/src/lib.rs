@@ -356,13 +356,24 @@ pub extern "C" fn bussola_version() -> *const u8 {
 // ---------------------------------------------------------------------------
 // Panic handler: with `no_std` we must provide one. Aborting is the right
 // behaviour for a library called across an FFI boundary anyway.
+//
+// Apple platforms need an explicit `-lSystem`: rustc links a `cdylib` with
+// `-nodefaultlibs`, so `abort` and `dyld_stub_binder` would stay unresolved.
 // ---------------------------------------------------------------------------
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
+    #[cfg(target_vendor = "apple")]
+    #[link(name = "System")]
     extern "C" {
         fn abort() -> !;
     }
+
+    #[cfg(not(target_vendor = "apple"))]
+    extern "C" {
+        fn abort() -> !;
+    }
+
     // SAFETY: `abort` never returns.
     unsafe { abort() }
 }
