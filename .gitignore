@@ -19,6 +19,7 @@
 /ios/*.xcworkspace/
 /ios/build/
 /ios/DerivedData/
+/ios/RustFrameworks/
 xcuserdata/
 *.xcuserstate
 

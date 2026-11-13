@@ -27,8 +27,8 @@ targets:
       base:
         PRODUCT_NAME: Bussola
         PRODUCT_BUNDLE_IDENTIFIER: com.bussola.app
-        MARKETING_VERSION: "1.1.0"
-        CURRENT_PROJECT_VERSION: "2"
+        MARKETING_VERSION: "1.2.0"
+        CURRENT_PROJECT_VERSION: "3"
         INFOPLIST_FILE: Bussola/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
@@ -36,10 +36,16 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: Bussola/Bussola-Bridging-Header.h
         HEADER_SEARCH_PATHS:
           - "$(SRCROOT)/Bussola/include"
+        # RustFrameworks contains ONLY libbussola.a (see scripts/build-ios-rust.sh).
+        # Pointing at rust/target/... instead would let `ld` pick up the
+        # libbussola.dylib that cargo also emits, which is what caused
+        # "Library not loaded: /Users/runner/.../libbussola.dylib" at launch.
         LIBRARY_SEARCH_PATHS:
-          - "$(SRCROOT)/../rust/target/aarch64-apple-ios/release"
+          - "$(SRCROOT)/RustFrameworks"
+        # Absolute path, deliberately not "-lbussola": a static archive has no
+        # install name and can never be recorded as a runtime dependency.
         OTHER_LDFLAGS:
-          - "-lbussola"
+          - "$(SRCROOT)/RustFrameworks/libbussola.a"
         ENABLE_BITCODE: NO
         # The IPA produced by CI is unsigned: signing is disabled there.
         CODE_SIGN_STYLE: Automatic

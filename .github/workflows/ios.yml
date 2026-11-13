@@ -87,30 +87,39 @@ jobs:
             exit 1
           fi
 
-          # La libreria Rust deve essere davvero linkata nell'eseguibile.
-          # Il binario installato e' strippato, quindi si guarda anche il dSYM.
-          # `grep -c` esce con 1 quando il conteggio e' 0: senza `|| true` lo
-          # `set -e` chiuderebbe lo step senza stampare nulla.
-          DWARF="$APP.dSYM/Contents/Resources/DWARF/Bussola"
-          count_symbols() {
-            { nm -a "$1" 2>/dev/null || true; } | grep -c "bussola_" || true
-          }
-          COUNT=$(count_symbols "$APP/Bussola")
-          echo "Simboli bussola_* nel binario: $COUNT"
-          if [ "$COUNT" -lt 4 ] && [ -f "$DWARF" ]; then
-            COUNT=$(count_symbols "$DWARF")
-            echo "Simboli bussola_* nel dSYM: $COUNT"
-          fi
-          # 10 funzioni C: new/free/update/update_rad/heading/set_offset/reset +
-          # cardinal/cardinal_count/version. Il dead-stripping tiene quelle
-          # raggiungibili, quindi basta un sottoinsieme solido.
-          if [ "$COUNT" -lt 4 ]; then
-            echo "::error::solo $COUNT simboli bussola_*: il core Rust non risulta linkato"
-            ls -la "$APP" || true
-            { nm -a "$APP/Bussola" 2>/dev/null || true; } | head -20 || true
+          # --- 1. Nessuna dipendenza dinamica verso la libreria Rust ---------
+          # Il bug che ha fatto crashare l'app all'avvio: `ld` preferiva
+          # libbussola.dylib e registrava il path assoluto del runner come
+          # install name. Un'app iOS non deve dipendere da percorsi del runner.
+          LINKAGE=$(otool -L "$APP/Bussola")
+          echo "$LINKAGE"
+          if echo "$LINKAGE" | grep -E "bussola|/Users/runner|/private/|/var/folders"; then
+            echo "::error::l'eseguibile dipende da un percorso assoluto o da libbussola.dylib"
             exit 1
           fi
-          echo "Core Rust linkato correttamente."
+          if ! echo "$LINKAGE" | grep -q "/usr/lib/libSystem.B.dylib"; then
+            echo "::error::libSystem non linkata: dipendenze inattese"
+            exit 1
+          fi
+          echo "Dipendenze dinamiche pulite (solo framework di sistema)."
+
+          # --- 2. Il core Rust e' davvero dentro l'eseguibile ---------------
+          # Codice e dati di una static lib finiscono nell'eseguibile, quindi i
+          # letterali della rosa devono essere presenti. Se mancano, la lib non
+          # e' stata linkata (era il secondo sintomo del bug).
+          MISSING=""
+          for label in NNE ENE SSE SSW WNW NNW; do
+            if ! strings -a "$APP/Bussola" | grep -qx "$label"; then
+              MISSING="$MISSING $label"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::etichette della rosa assenti dal binario:$MISSING -- la static lib Rust non e' linkata"
+            exit 1
+          fi
+          COUNT=$( { nm -a "$APP/Bussola" 2>/dev/null || true; } | grep -c "bussola_" || true )
+          echo "Etichette della rosa presenti; simboli bussola_*: $COUNT"
+          echo "Core Rust linkato staticamente."
 
           mkdir -p dist/ipa/Payload
           cp -R "$APP" dist/ipa/Payload/
