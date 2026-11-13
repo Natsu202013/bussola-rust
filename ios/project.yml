@@ -51,12 +51,6 @@ targets:
         CODE_SIGN_STYLE: Automatic
         # Dead-strip the Rust symbols that are never referenced from Swift.
         DEAD_CODE_STRIPPING: YES
-        # The link map is extra evidence that `ld` consumed the archive rather
-        # than a dylib: it lists every archive member it pulled in. A relative
-        # path keeps it inside the derived-data build directory, where CI finds
-        # it with `find`.
-        LD_GENERATE_MAP_FILE: YES
-        LD_MAP_FILE_PATH: bussola-link.map
 
 schemes:
   Bussola:
