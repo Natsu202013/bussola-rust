@@ -19,7 +19,6 @@
 /ios/*.xcworkspace/
 /ios/build/
 /ios/DerivedData/
-/ios/Bussola/Info.plist
 xcuserdata/
 *.xcuserstate
 
