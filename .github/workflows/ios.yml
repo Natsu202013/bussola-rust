@@ -81,22 +81,33 @@ jobs:
         run: |
           set -euo pipefail
           APP="$RUNNER_TEMP/dd/Build/Products/Release-iphoneos/Bussola.app"
-          [ -d "$APP" ] || { echo "::error::Bussola.app non trovato"; find "$RUNNER_TEMP/dd" -name '*.app' -maxdepth 6; exit 1; }
+          if [ ! -d "$APP" ]; then
+            echo "::error::Bussola.app non trovato"
+            find "$RUNNER_TEMP/dd" -maxdepth 6 -name '*.app' || true
+            exit 1
+          fi
 
           # La libreria Rust deve essere davvero linkata nell'eseguibile.
-          # Il binario installato e' strippato, quindi i simboli si cercano nel
-          # dSYM generato da Xcode (stessa immagine, simboli conservati).
+          # Il binario installato e' strippato, quindi si guarda anche il dSYM.
+          # `grep -c` esce con 1 quando il conteggio e' 0: senza `|| true` lo
+          # `set -e` chiuderebbe lo step senza stampare nulla.
           DWARF="$APP.dSYM/Contents/Resources/DWARF/Bussola"
-          SYMBOLS="$APP/Bussola"
-          [ -f "$DWARF" ] && SYMBOLS="$DWARF"
-          COUNT=$(nm -a "$SYMBOLS" 2>/dev/null | grep -c "bussola_")
-          echo "Simboli bussola_* trovati: $COUNT"
+          count_symbols() {
+            { nm -a "$1" 2>/dev/null || true; } | grep -c "bussola_" || true
+          }
+          COUNT=$(count_symbols "$APP/Bussola")
+          echo "Simboli bussola_* nel binario: $COUNT"
+          if [ "$COUNT" -lt 4 ] && [ -f "$DWARF" ]; then
+            COUNT=$(count_symbols "$DWARF")
+            echo "Simboli bussola_* nel dSYM: $COUNT"
+          fi
           # 10 funzioni C: new/free/update/update_rad/heading/set_offset/reset +
-          # cardinal/cardinal_count/version. Dead-stripping keeps the reachable
-          # ones, so require a solid subset rather than all ten.
+          # cardinal/cardinal_count/version. Il dead-stripping tiene quelle
+          # raggiungibili, quindi basta un sottoinsieme solido.
           if [ "$COUNT" -lt 4 ]; then
             echo "::error::solo $COUNT simboli bussola_*: il core Rust non risulta linkato"
-            nm -a "$SYMBOLS" 2>/dev/null | head -20 || ls -la "$APP"
+            ls -la "$APP" || true
+            { nm -a "$APP/Bussola" 2>/dev/null || true; } | head -20 || true
             exit 1
           fi
           echo "Core Rust linkato correttamente."
