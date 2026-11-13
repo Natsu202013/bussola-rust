@@ -50,13 +50,14 @@ radianti `atan2` (convenzione Android) e le 16 etichette della rosa dei venti.
 
 ## Download
 
-Dalla pagina **Releases** (tag `v1.0.0`):
+Dalla pagina **Releases** (tag `v1.1.0`). Ogni bump di `versionName` in
+`android/app/build.gradle.kts` crea una release nuova al push successivo:
 
 | File | Piattaforma | Note |
 |---|---|---|
-| `Bussola.apk` | Android | firmato, Android 7+ (API 24), arm64-v8a + armeabi-v7a |
+| `Bussola.apk` | Android | 83 KB, firmato, Android 7+ (API 24), arm64-v8a + armeabi-v7a |
 | `Bussola.apk.sha256` | — | checksum |
-| `Bussola.ipa` | iOS | **non firmato**, va rifirmato con Sideloadly/AltStore |
+| `Bussola.ipa` | iOS | 131 KB, **non firmato**, va rifirmato con Sideloadly/AltStore |
 | `Bussola.app.zip` | iOS | bundle `.app` per rifirma manuale |
 | `Bussola.ipa.sha256` | — | checksum |
 
@@ -105,8 +106,8 @@ universale per il simulatore.
 | `android.yml` | `ubuntu-latest` | APK firmato + release |
 | `ios.yml` | `macos-15` | static lib Rust, XcodeGen, `.app`, IPA non firmato + release |
 
-Tutti e tre allegano i propri file alla release `v1.0.0`; il primo che arriva la
-crea. Per firmare l'APK con un keystore tuo, aggiungi i secrets
+Tutti e tre allegano i propri file alla release `v<versionName>`; il primo che
+arriva la crea, l'altro la completa con i suoi file. Per firmare l'APK con un keystore tuo, aggiungi i secrets
 `BUSSOLA_KEYSTORE_BASE64`, `BUSSOLA_STORE_PASSWORD`, `BUSSOLA_KEY_ALIAS`,
 `BUSSOLA_KEY_PASSWORD`. Senza, la CI genera un keystore effimero e l'APK è
 firmato ma non aggiornabile con build successive.
